@@ -14,8 +14,20 @@ const isProperNoun = (wordInfo) => {
     return wordInfo.lemma.charAt(0) === wordInfo.lemma.charAt(0).toUpperCase();
 } 
 
+const getWordScore = (word, letters) => {
+    // Check if word has all letters, in which case score it as a pangram
+    if (new Set(word).size === new Set(word + letters).size) {
+        return word.length + 9;
+    } 
+    // If word isn't a pangram, it's score is its length - 3 (which maps 4 letter words to 1, 5 letter words to 2, etc.)
+    else {
+        return word.length - 3;
+    }
+};
+
 export const isValidNoun = async (word) => {
     const response = await wordpos.lookupNoun(word);
+    // console.log(response);
     for (const def of response) {
         // Handles country currencies
         if (def.lexName.endsWith('quantity') && def.def.toLowerCase() !== def.def) {
@@ -42,7 +54,7 @@ export const isValidAdj = async (word) => {
     return false;
 }
 
-const filterNounsOrAdjs = async (words, areNouns) => {
+export const filterNounsOrAdjs = async (words, areNouns) => {
     let filteredWords = [];
     for (const w of words) {
         if (areNouns ? await isValidNoun(w) : await isValidAdj(w)) {
@@ -52,7 +64,7 @@ const filterNounsOrAdjs = async (words, areNouns) => {
     return filteredWords;
 }
 
-export const filterWords = async (words) => {
+export const filterWords = async (words, letters) => {
     // First, remove any bad words
     const filteredWords = filter.clean(words);
 
@@ -60,15 +72,25 @@ export const filterWords = async (words) => {
     const response = await wordpos.getPOS(filteredWords);
     const filteredNouns = await filterNounsOrAdjs(response.nouns, true);
     const filteredAdjs = await filterNounsOrAdjs(response.adjectives, false);
-    console.log(response);
 
     // Construct array of filtered words and then turn that array into a dictionary where the key
     // is the word and the value is whether it has been found yet
     const wordsArr = response.adverbs.concat(filteredAdjs, filteredNouns, response.verbs);
-    const wordsDict = wordsArr.reduce((acc, curr) => (acc[curr] = false, acc), {});
-    console.log(wordsDict, Object.keys(wordsDict).length);
 
-    return wordsDict;
+    let wordsDict = {};
+    let scoresDict = {};
+    let maxScore = 0;
+    for (const word of wordsArr) {
+        wordsDict[word] = false;
+        const score = getWordScore(word, letters);
+        scoresDict[word] = score;
+        maxScore += score;
+    }
+    console.log(wordsDict, Object.keys(wordsDict).length);
+    console.log(scoresDict, Object.keys(scoresDict).length);
+    console.log(maxScore);
+
+    return {words: wordsDict, scores: scoresDict, maxScore: maxScore};
 }
 
 export const isValidPangram = async (pangram) => {
@@ -81,6 +103,6 @@ export const isValidPangram = async (pangram) => {
         return isValidAdj(pangram);
     }
     // If it's not a noun, make sure that it's also either an adjective, adverb, or verb
-    return true;
+    return response.rest.length === 0;
 }
 

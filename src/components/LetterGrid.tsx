@@ -1,4 +1,4 @@
-import React, {Dispatch, SetStateAction} from 'react'
+import React, {Dispatch, SetStateAction, useEffect} from 'react'
 import Box from '@mui/material/Box';
 import makeStyles from '@mui/styles/makeStyles';
 import LetterCell from './LetterCell';

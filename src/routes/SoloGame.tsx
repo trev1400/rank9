@@ -1,18 +1,24 @@
-import React, {useEffect, useState, useCallback} from 'react'
+import React, {useEffect, useState, useCallback, useRef} from 'react'
 import Stack from '@mui/material/Stack';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 import ProgressSlider from '../components/ProgressSlider';
 import WordsList from '../components/WordsList';
 import WordInput from '../components/WordInput';
 import AlertSection from '../components/AlertSection';
 import LetterGrid from '../components/LetterGrid';
 import ControlButtons from '../components/ControlButtons';
-import { filterWords, isValidPangram, isValidNoun, isValidAdj } from '../WordPOSUtils';
+import { filterWords, isValidPangram, isValidNoun, isValidAdj, filterNounsOrAdjs } from '../WordPOSUtils';
 
 interface BooleanDict {
     // Key is word, value is if it has been found yet
     [key: string|number]: boolean
+}
+
+interface NumberDict {
+    // Key is word, value is if it has been found yet
+    [key: string|number]: number
 }
 
 const isLetter = (c: string) => {
@@ -42,41 +48,51 @@ const shuffle = (array: Array<string>) => {
 }
 
 function SoloGame() {
+    const currTimeoutID = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const [loaded, setLoaded] = useState<boolean>(false);
     const [letters, setLetters] = useState<Array<string>>([]);
     const [centerLetter, setCenterLetter] = useState<string>('');
     const [score, setScore] = useState<number>(0);
     const [rank, setRank] = useState<number>(0);
     const [allWords, setAllWords] = useState<BooleanDict>({});
+    const [wordScores, setWordScores] = useState<NumberDict>({});
+    const [maxScore, setMaxScore] = useState<number>(0);
     const [foundWords, setFoundWords] = useState<Array<string>>([]);
     const [currentWord, setCurrentWord] = useState<Array<string>>([]);
+    const [alertMessage, setAlertMessage] = useState<string>('');
 
-    const getWordScore = useCallback((word: string) => {
-        // Check if word has all letters, in which case score it as a pangram
-        if (new Set(word).size === new Set(word + letters.join('')).size) {
-            return word.length + 7;
-        } 
-        // If word isn't a pangram but is greater than 4 letters, its score is its length
-        else if (word.length > 4) {
-            return word.length;
-        } else {
-            // 4 letter words are worth 1
-            return 1;
+    const updateAlertMessage = useCallback((message: string) => {
+        if (currTimeoutID.current) {
+            clearTimeout(currTimeoutID.current);
         }
-    }, [letters]);
+        setAlertMessage(message);
+        currTimeoutID.current = setTimeout(() => setAlertMessage(''), 3000);
+    }, []);
 
     const enterWord = useCallback(() => {
         // Create current word from its character array
         const currentWordString = currentWord.join('');
-        getWordScore(currentWordString);
-        // Check if word is even present and if it hasn't been found
+
+        // Check if word is valid and if it hasn't been found
         if (allWords.hasOwnProperty(currentWordString) && !allWords[currentWordString]) {
+            const wordScore = wordScores[currentWordString];
             // Increase overall score, add word as found, set it as found in allWords
-            setScore(s => s + getWordScore(currentWordString));
+            setScore(s => s + wordScore);
             setFoundWords([...foundWords, capitalizeFirstLetter(currentWordString)]);
+            updateAlertMessage(wordScore === currentWordString.length + 9 ? `Pangram! +${wordScore}` : `Keep it up! +${wordScore}`);
             allWords[currentWordString] = true;
+        } else if (!currentWord.every(letter => letters.includes(letter))) {
+            updateAlertMessage('Invalid letters!')
+        } else if (currentWord.length < 4) {
+            updateAlertMessage('Words must be at least 4 letters long!')
+        } else if (allWords[currentWordString]) {
+            updateAlertMessage('You\'ve already found this word!')
+        } else if (!currentWord.includes(centerLetter)) {
+            updateAlertMessage('Words must include the center letter!')
         }
         setCurrentWord([]);
-    }, [allWords, currentWord, foundWords, getWordScore]);
+
+    }, [allWords, currentWord, foundWords, centerLetter, letters, wordScores, updateAlertMessage]);
 
     const onKeydown = useCallback((event: KeyboardEvent) => {
         // Check if key was a valid letter
@@ -93,25 +109,25 @@ function SoloGame() {
         }
     }, [currentWord, enterWord]);
 
-    const getCenterLetter = (letters: Array<string>) => {
+    const adjustLetters = (letters: Array<string>) => {
         // If first letter in shuffled array is a vowel, that can be our center letter
         if (['a', 'e', 'i', 'o', 'u'].indexOf(letters[0].toLowerCase()) === -1) {
-            return letters[0];
+            return letters;
         } else {
             // Otherwise, find first consonant, move it to front of array, and return it as center letter
             for (let i = 1; i < letters.length; i++) {
                 if (['a', 'e', 'i', 'o', 'u'].indexOf(letters[i].toLowerCase()) === -1) {
                     [letters[0], letters[i]] = [letters[i], letters[0]];
-                    return letters[i];
+                    return letters;
                 }
             }
-            return letters[0];
+            return letters;
         }
     }
 
     const generatePangram = async () => {
         // ^(?:([a-rt-z])(?!.*\1))*$
-        const pangramResponse = await fetch('https://wordsapiv1.p.rapidapi.com/words/?random=true&letterPattern=%5E(%3F%3A(%5Ba-rt-z%5D)(%3F!.*%5C1))*%24&letters=9&frequencyMin=1.5', {
+        const pangramResponse = await fetch('https://wordsapiv1.p.rapidapi.com/words/?random=true&letterPattern=%5E(%3F%3A(%5Ba-rt-z%5D)(%3F!.*%5C1))*%24&letters=9&frequencyMin=2.0', {
             'method': 'GET',
             'headers': {
                 'x-rapidapi-host': 'wordsapiv1.p.rapidapi.com',
@@ -133,9 +149,9 @@ function SoloGame() {
         }
 
         // Convert string to Set first to remove duplicates, then back to Array
-        const letters = shuffle(Array.from(new Set(pangram.split(''))));
+        const letters = adjustLetters(shuffle(Array.from(new Set(pangram.split('')))));
         setLetters(letters);
-        setCenterLetter(getCenterLetter(letters));
+        setCenterLetter(letters[0]);
 
         const answersResponse = await fetch(`https://wordsapiv1.p.rapidapi.com/words/?letterPattern=%5E(%3F%3D%5B${pangram}%5D%7B4%2C%7D%24)%5B${pangram}%5D*${letters[0]}%5B${pangram}%5D*%24&limit=1000&frequencyMin=1.5`, {
             "method": "GET",
@@ -148,7 +164,11 @@ function SoloGame() {
         
         if (answersData.results.data) {
             const unfilteredWords = answersData.results.data.join(' ')
-            setAllWords(await filterWords(unfilteredWords));
+            const filteredWords = await filterWords(unfilteredWords, letters.join(''));
+            setAllWords(filteredWords.words as BooleanDict);
+            setWordScores(filteredWords.scores as NumberDict);
+            setMaxScore(filteredWords.maxScore);
+            setLoaded(true);
         } 
     }
 
@@ -187,9 +207,12 @@ function SoloGame() {
                     <Typography variant='h6' color='white' sx={{marginTop: '8px!important'}}>Rank {rank} | 50 points until Rank {rank+1}</Typography>
                 </Stack>
                 <WordsList foundWords={foundWords}/>
-                <AlertSection />
+                <AlertSection message={alertMessage} />
                 <WordInput letters={letters} centerLetter={centerLetter} currentWord={currentWord} />
-                <LetterGrid letters={letters} centerLetter={centerLetter} currentWord={currentWord} setCurrentWord={setCurrentWord} />
+                {loaded 
+                    ? <LetterGrid letters={letters} centerLetter={centerLetter} currentWord={currentWord} setCurrentWord={setCurrentWord} />
+                    : <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '35vh'}}><CircularProgress size='4rem'/></Box>
+                }
                 <ControlButtons shuffleLetters={shuffleLetters} deleteLetter={deleteLetter} enterWord={enterWord}/>
             </Stack>
         </Box>
