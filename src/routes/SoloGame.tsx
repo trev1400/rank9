@@ -8,7 +8,7 @@ import WordInput from '../components/WordInput';
 import AlertSection from '../components/AlertSection';
 import LetterGrid from '../components/LetterGrid';
 import ControlButtons from '../components/ControlButtons';
-import { filterWords, isValidPangram, lookupNoun } from '../WordPOSUtils';
+import { filterWords, isValidPangram, isValidNoun, isValidAdj } from '../WordPOSUtils';
 
 interface BooleanDict {
     // Key is word, value is if it has been found yet
@@ -42,7 +42,6 @@ const shuffle = (array: Array<string>) => {
 }
 
 function SoloGame() {
-    const [loaded, setLoaded] = useState<boolean>(false);
     const [letters, setLetters] = useState<Array<string>>([]);
     const [centerLetter, setCenterLetter] = useState<string>('');
     const [score, setScore] = useState<number>(0);
@@ -53,7 +52,7 @@ function SoloGame() {
 
     const getWordScore = useCallback((word: string) => {
         // Check if word has all letters, in which case score it as a pangram
-        if (new Set(word).size === new Set(word + letters).size) {
+        if (new Set(word).size === new Set(word + letters.join('')).size) {
             return word.length + 7;
         } 
         // If word isn't a pangram but is greater than 4 letters, its score is its length
@@ -68,6 +67,7 @@ function SoloGame() {
     const enterWord = useCallback(() => {
         // Create current word from its character array
         const currentWordString = currentWord.join('');
+        getWordScore(currentWordString);
         // Check if word is even present and if it hasn't been found
         if (allWords.hasOwnProperty(currentWordString) && !allWords[currentWordString]) {
             // Increase overall score, add word as found, set it as found in allWords
@@ -93,9 +93,25 @@ function SoloGame() {
         }
     }, [currentWord, enterWord]);
 
+    const getCenterLetter = (letters: Array<string>) => {
+        // If first letter in shuffled array is a vowel, that can be our center letter
+        if (['a', 'e', 'i', 'o', 'u'].indexOf(letters[0].toLowerCase()) === -1) {
+            return letters[0];
+        } else {
+            // Otherwise, find first consonant, move it to front of array, and return it as center letter
+            for (let i = 1; i < letters.length; i++) {
+                if (['a', 'e', 'i', 'o', 'u'].indexOf(letters[i].toLowerCase()) === -1) {
+                    [letters[0], letters[i]] = [letters[i], letters[0]];
+                    return letters[i];
+                }
+            }
+            return letters[0];
+        }
+    }
+
     const generatePangram = async () => {
         // ^(?:([a-rt-z])(?!.*\1))*$
-        const pangramResponse = await fetch('https://wordsapiv1.p.rapidapi.com/words/?random=true&letterPattern=%5E(%3F%3A(%5Ba-rt-z%5D)(%3F!.*%5C1))*%24&lettersMin=9&lettersMax=13&frequencyMin=1.5', {
+        const pangramResponse = await fetch('https://wordsapiv1.p.rapidapi.com/words/?random=true&letterPattern=%5E(%3F%3A(%5Ba-rt-z%5D)(%3F!.*%5C1))*%24&letters=9&frequencyMin=1.5', {
             'method': 'GET',
             'headers': {
                 'x-rapidapi-host': 'wordsapiv1.p.rapidapi.com',
@@ -108,31 +124,32 @@ function SoloGame() {
     }
 
     const generateLettersAndAnswers = async () => {
-        await lookupNoun('rayon');
-        // let pangram = await generatePangram();
+        let pangram = await generatePangram();
+        let validPangram = await isValidPangram(pangram);
 
-        // while (await !isValidPangram(pangram)) {
-        //     pangram = await generatePangram();
-        // }
+        while (!validPangram) {
+            pangram = await generatePangram();
+            validPangram = await isValidPangram(pangram);
+        }
 
-        // // Convert string to Set first to remove duplicates, then back to Array
-        // const letters = shuffle(Array.from(new Set(pangram.split(''))));
-        // setLetters(letters);
-        // setCenterLetter(letters[0]);
+        // Convert string to Set first to remove duplicates, then back to Array
+        const letters = shuffle(Array.from(new Set(pangram.split(''))));
+        setLetters(letters);
+        setCenterLetter(getCenterLetter(letters));
 
-        // const answersResponse = await fetch(`https://wordsapiv1.p.rapidapi.com/words/?letterPattern=%5E(%3F%3D%5B${pangram}%5D%7B4%2C%7D%24)%5B${pangram}%5D*${letters[0]}%5B${pangram}%5D*%24&limit=1000&frequencyMin=1.5`, {
-        //     "method": "GET",
-        //     "headers": {
-        //         "x-rapidapi-host": "wordsapiv1.p.rapidapi.com",
-        //         "x-rapidapi-key": `${process.env.REACT_APP_WORDS_API_KEY!}`
-        //     }
-        //     })
-        // const answersData = await answersResponse.json();
+        const answersResponse = await fetch(`https://wordsapiv1.p.rapidapi.com/words/?letterPattern=%5E(%3F%3D%5B${pangram}%5D%7B4%2C%7D%24)%5B${pangram}%5D*${letters[0]}%5B${pangram}%5D*%24&limit=1000&frequencyMin=1.5`, {
+            "method": "GET",
+            "headers": {
+                "x-rapidapi-host": "wordsapiv1.p.rapidapi.com",
+                "x-rapidapi-key": `${process.env.REACT_APP_WORDS_API_KEY!}`
+            }
+            })
+        const answersData = await answersResponse.json();
         
-        // if (answersData.results.data) {
-        //     const unfilteredWords = answersData.results.data.join(' ')
-        //     setAllWords(await filterWords(unfilteredWords));
-        // } 
+        if (answersData.results.data) {
+            const unfilteredWords = answersData.results.data.join(' ')
+            setAllWords(await filterWords(unfilteredWords));
+        } 
     }
 
     /* eslint-disable react-hooks/exhaustive-deps */

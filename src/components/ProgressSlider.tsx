@@ -9,12 +9,12 @@ function ProgressSlider(props: any) {
         padding: '13px 0',
         '& .MuiSlider-thumb': {
             marginLeft: 2,
-            height: 22,
-            width: 22,
+            height: 24,
+            width: 24,
             borderRadius: 0,
             backgroundColor: '#6CDCFF',
             '& .score': {
-                fontSize: 12,
+                fontSize: 11,
                 marginBottom: 1
             }
         },
