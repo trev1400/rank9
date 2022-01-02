@@ -2,7 +2,12 @@ import React from 'react'
 import {Box, Slider, SliderThumb} from '@mui/material';
 import styled from '@mui/styles/styled';
 
-function ProgressSlider(props: any) {
+interface ProgressSliderProps {
+    rank: number,
+    score: number
+}
+
+function ProgressSlider(props: ProgressSliderProps) {
     const BeelineSlider = styled(Slider)(({ theme }) => ({
         color: 'black',
         height: 3,
@@ -57,10 +62,10 @@ function ProgressSlider(props: any) {
         <Box style={{width: '100%', paddingRight: '12px', paddingLeft: '2px'}}>
             <BeelineSlider 
                 components={{ Thumb: BeelineThumbComponent }}
-                value={props.score}
+                value={props.rank}
                 marks
-                min={0}
-                max={8}
+                min={1}
+                max={9}
                 step={1}
             />
         </Box>

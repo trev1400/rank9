@@ -17,7 +17,7 @@ interface BooleanDict {
 }
 
 interface NumberDict {
-    // Key is word, value is if it has been found yet
+    // Key is word, value is if its score
     [key: string|number]: number
 }
 
@@ -47,13 +47,16 @@ const shuffle = (array: Array<string>) => {
     return array;
 }
 
+const scoreScalars = [0, 0.025, 0.05, 0.0667, 0.1, 0.2, 0.3, 0.4, 0.5];
+
 function SoloGame() {
     const currTimeoutID = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const [loaded, setLoaded] = useState<boolean>(false);
     const [letters, setLetters] = useState<Array<string>>([]);
     const [centerLetter, setCenterLetter] = useState<string>('');
     const [score, setScore] = useState<number>(0);
-    const [rank, setRank] = useState<number>(0);
+    const [rank, setRank] = useState<number>(1);
+    const [rankScores, setRankScores] = useState<NumberDict>({});
     const [allWords, setAllWords] = useState<BooleanDict>({});
     const [wordScores, setWordScores] = useState<NumberDict>({});
     const [maxScore, setMaxScore] = useState<number>(0);
@@ -69,6 +72,14 @@ function SoloGame() {
         currTimeoutID.current = setTimeout(() => setAlertMessage(''), 3000);
     }, []);
 
+    const updateRank = useCallback((newScore: number) => {
+        let rankIncrement = 1;
+        while (rankScores[rank + rankIncrement] <= newScore) {
+            rankIncrement++;
+        }
+        setRank(rank + (rankIncrement-1));
+    }, [rank, rankScores])
+
     const enterWord = useCallback(() => {
         // Create current word from its character array
         const currentWordString = currentWord.join('');
@@ -78,6 +89,7 @@ function SoloGame() {
             const wordScore = wordScores[currentWordString];
             // Increase overall score, add word as found, set it as found in allWords
             setScore(s => s + wordScore);
+            updateRank(score + wordScore);
             setFoundWords([...foundWords, capitalizeFirstLetter(currentWordString)]);
             updateAlertMessage(wordScore === currentWordString.length + 9 ? `Pangram! +${wordScore}` : `Keep it up! +${wordScore}`);
             allWords[currentWordString] = true;
@@ -92,7 +104,7 @@ function SoloGame() {
         }
         setCurrentWord([]);
 
-    }, [allWords, currentWord, foundWords, centerLetter, letters, wordScores, updateAlertMessage]);
+    }, [allWords, currentWord, foundWords, centerLetter, letters, wordScores, score, updateRank, updateAlertMessage]);
 
     const onKeydown = useCallback((event: KeyboardEvent) => {
         // Check if key was a valid letter
@@ -123,6 +135,14 @@ function SoloGame() {
             }
             return letters;
         }
+    }
+
+    const calculateRankScores = (maxScore: number) => {
+        let rankScores: NumberDict = {};
+        for (let i = 1; i < 10; i++) {
+            rankScores[i] = Math.floor(scoreScalars[i-1] * maxScore);
+        }
+        setRankScores(rankScores);
     }
 
     const generatePangram = async () => {
@@ -168,6 +188,7 @@ function SoloGame() {
             setAllWords(filteredWords.words as BooleanDict);
             setWordScores(filteredWords.scores as NumberDict);
             setMaxScore(filteredWords.maxScore);
+            calculateRankScores(filteredWords.maxScore);
             setLoaded(true);
         } 
     }
@@ -203,8 +224,11 @@ function SoloGame() {
                 sx={{width: '85%', paddingY: '5%'}}
             >
                 <Stack spacing={2} alignItems='center'>
-                    <ProgressSlider score={score}/>
-                    <Typography variant='h6' color='white' sx={{marginTop: '8px!important'}}>Rank {rank} | 50 points until Rank {rank+1}</Typography>
+                    <ProgressSlider rank={rank} score={score}/>
+                    {rank === 9
+                        ? <Typography variant='h6' color='primary' sx={{marginTop: '8px!important'}}>Rank 9!</Typography>
+                        : <Typography variant='h6' color='white' sx={{marginTop: '8px!important'}}>Rank {rank} | {rankScores[rank+1] - score} points until Rank {rank+1}</Typography>
+                    }
                 </Stack>
                 <WordsList foundWords={foundWords}/>
                 <AlertSection message={alertMessage} />
